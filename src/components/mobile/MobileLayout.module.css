@@ -4,11 +4,12 @@
   height: 100vh;
   width: 100vw;
   background: var(--bg-primary);
-  /* 3% page-edge margin on every side, exactly 3% of the device size
-     on each axis. Clamped to a sensible range (12px - 32px) so it
-     never collapses to sub-pixel on tiny viewports and never eats
-     too much of the screen on very large monitors. */
-  padding: clamp(12px, 3vh, 32px) clamp(12px, 3vw, 32px);
+  /* Auto page-edge margin: 5% of the viewport height on the top/bottom
+     (atas/bawah) so the layout never hugs the screen edges, plus 3% of
+     the viewport width on the sides. Clamped to a sensible range
+     (12px - 48px vertical, 12px - 32px horizontal). The 5% top/bottom
+     is applied automatically via vh. */
+  padding: clamp(12px, 5vh, 48px) clamp(12px, 3vw, 32px);
   box-sizing: border-box;
   gap: clamp(6px, 1vh, 8px);
   overflow: hidden;
