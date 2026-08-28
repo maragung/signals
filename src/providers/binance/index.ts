@@ -15,10 +15,12 @@ import type {
   ConnectionStatus,
   StatusCallback,
   TickerCallback,
+  TickerData,
   Unsubscribe,
 } from '@/types';
 import type { SymbolInfo, Timeframe } from '@/types';
 import { TIMEFRAME_TO_BINANCE, type MarketDataProvider } from '../types';
+import { startPollingStream } from '../_poll';
 import {
   hasWebSocket,
   isBrowser,
@@ -58,6 +60,8 @@ export interface BinanceProviderOptions {
   WebSocketCtor?: new (url: string) => WebSocket;
   /** Sleep override (used in tests). */
   sleepFn?: (ms: number) => Promise<void>;
+  /** Live-update poll interval in ms when using the server proxy (default 2000). */
+  pollIntervalMs?: number;
 }
 
 /** Minimal WebSocket interface used by the provider. */
@@ -76,6 +80,7 @@ export class BinanceProvider implements MarketDataProvider {
       fetchImpl: options.fetchImpl ?? (typeof fetch !== 'undefined' ? fetch.bind(globalThis) : (() => Promise.reject(new Error('fetch not available'))) as unknown as typeof fetch),
       WebSocketCtor: options.WebSocketCtor ?? (typeof WebSocket !== 'undefined' ? WebSocket : (undefined as unknown as new (url: string) => WebSocket)),
       sleepFn: options.sleepFn ?? sleep,
+      pollIntervalMs: options.pollIntervalMs ?? 2000,
     };
   }
 
@@ -150,12 +155,57 @@ export class BinanceProvider implements MarketDataProvider {
     return sortCandles(fromTuples(tuples));
   }
 
+  /** Latest single candle (via REST, through the proxy when useProxy is set). */
+  async fetchLatestCandle(symbol: SymbolInfo, timeframe: Timeframe): Promise<Candle | null> {
+    const candles = await this.getHistoricalCandles(symbol, timeframe, 1);
+    return candles.length > 0 ? candles[candles.length - 1]! : null;
+  }
+
+  /** Latest ticker (via REST 24hr ticker endpoint, through the proxy). */
+  async fetchTicker(symbol: SymbolInfo): Promise<TickerData | null> {
+    const id = symbol.providerIds[this.name];
+    if (!id) return null;
+    for (const base of this.restBases()) {
+      const url = `${base}/api/v3/ticker/24hr?symbol=${id.toUpperCase()}`;
+      const res = await safeJsonFetchWithStatus(url, {}, 15000, this.opts.fetchImpl);
+      if (res.status === 451 || res.status === 403 || res.status === 407) continue;
+      const d = res.data as Record<string, unknown> | null;
+      if (!d) {
+        if (res.ok) return null;
+        continue;
+      }
+      const ticker = sanitizeTicker(
+        {
+          symbol: typeof d.symbol === 'string' ? (d.symbol as string) : symbol.display,
+          price: num(d.lastPrice, 0),
+          change24h: num(d.priceChange, 0),
+          changePercent24h: num(d.priceChangePercent, 0),
+          high24h: num(d.highPrice, 0),
+          low24h: num(d.lowPrice, 0),
+          volume24h: num(d.volume, 0),
+          timestamp: tsSeconds(d.closeTime ?? d.openTime),
+        },
+        symbol.display,
+      );
+      return ticker.price > 0 ? ticker : null;
+    }
+    return null;
+  }
+
   subscribeCandles(
     symbol: SymbolInfo,
     timeframe: Timeframe,
     onCandle: CandleCallback,
     onStatus: StatusCallback,
   ): Unsubscribe {
+    if (this.opts.useProxy) {
+      return startPollingStream({
+        candleFetcher: () => this.fetchLatestCandle(symbol, timeframe),
+        intervalMs: this.opts.pollIntervalMs,
+        onCandle,
+        onStatus,
+      });
+    }
     return this.startKlineStream(symbol, timeframe, onCandle, onStatus);
   }
 
@@ -164,6 +214,14 @@ export class BinanceProvider implements MarketDataProvider {
     onTicker: TickerCallback,
     onStatus: StatusCallback,
   ): Unsubscribe {
+    if (this.opts.useProxy) {
+      return startPollingStream({
+        tickerFetcher: () => this.fetchTicker(symbol),
+        intervalMs: this.opts.pollIntervalMs,
+        onTicker,
+        onStatus,
+      });
+    }
     return this.startTickerStream(symbol, onTicker, onStatus);
   }
 

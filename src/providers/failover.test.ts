@@ -227,3 +227,98 @@ describe('New provider getHistoricalCandles parsing', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Proxied live updates poll via REST (no WebSocket)
+// ---------------------------------------------------------------------------
+
+describe('Proxied providers poll REST for live updates (no client WebSocket)', () => {
+  const symbol = makeSymbol({ providerIds: { bybit: 'BTCUSDT' } });
+
+  const bybitFetch = (url: string): Response => {
+    if (url.includes('/v5/market/tickers')) {
+      return new Response(
+        JSON.stringify({
+          result: {
+            list: [
+              {
+                symbol: 'BTCUSDT',
+                lastPrice: '100',
+                price24h: '5',
+                price24hPcnt: '0.05',
+                highPrice24h: '110',
+                lowPrice24h: '90',
+                volume24h: '10',
+                timestamp: 1700000000000,
+              },
+            ],
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }
+    if (url.includes('/v5/market/kline')) {
+      return new Response(
+        JSON.stringify({ result: { list: [[1700000000000, '100', '110', '90', '105', '10']] } }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }
+    return new Response('{}', { status: 200 });
+  };
+
+  it('Bybit subscribeTicker with useProxy polls REST and never opens a WebSocket', async () => {
+    const wsConstructed: unknown[] = [];
+    const wsCtor = class {
+      constructor(public url: string) {
+        wsConstructed.push(url);
+      }
+    } as unknown as new (url: string) => WebSocket;
+
+    const p = new BybitProvider({
+      useProxy: true,
+      fetchImpl: bybitFetch as unknown as typeof fetch,
+      WebSocketCtor: wsCtor,
+      pollIntervalMs: 50,
+    });
+    p.registerSymbol(symbol);
+
+    const tickers: number[] = [];
+    const unsub = p.subscribeTicker(symbol, (t) => tickers.push(t.price), () => undefined);
+
+    // The first poll fires immediately (void tick()), so a short wait suffices.
+    await new Promise((r) => setTimeout(r, 30));
+    unsub();
+
+    expect(tickers).toContain(100);
+    expect(wsConstructed).toHaveLength(0);
+  });
+
+  it('Binance subscribeTicker with useProxy polls REST 24hr ticker', async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      expect(url).toContain('/api/v3/ticker/24hr');
+      return new Response(
+        JSON.stringify({
+          symbol: 'BTCUSDT',
+          lastPrice: '50000',
+          priceChange: '1000',
+          priceChangePercent: '2',
+          highPrice: '51000',
+          lowPrice: '49000',
+          volume: '123',
+          closeTime: 1700000000000,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    });
+    const p = new BinanceProvider({ useProxy: true, fetchImpl: fetchImpl as unknown as typeof fetch, pollIntervalMs: 50 });
+    p.registerSymbol(makeSymbol({ providerIds: { binance: 'BTCUSDT' } }));
+
+    const tickers: number[] = [];
+    const unsub = p.subscribeTicker(makeSymbol({ providerIds: { binance: 'BTCUSDT' } }), (t) => tickers.push(t.price), () => undefined);
+    await new Promise((r) => setTimeout(r, 30));
+    unsub();
+
+    expect(tickers).toContain(50000);
+    expect(fetchImpl).toHaveBeenCalled();
+  });
+});
+

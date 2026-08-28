@@ -13,6 +13,7 @@ import { isFiniteNum } from '@/core/utils/series';
 import type { Candle, ConnectionStatus, SymbolInfo, TickerData, Timeframe } from '@/types';
 import type { CandleCallback, MarketDataProvider, StatusCallback, TickerCallback, Unsubscribe } from '../types';
 import { createMultiStreamController } from '../_stream';
+import { startPollingStream } from '../_poll';
 import {
   hasWebSocket,
   isBrowser,
@@ -54,6 +55,8 @@ export interface BybitProviderOptions {
   WebSocketCtor?: new (url: string) => WebSocket;
   /** Sleep override (used in tests). */
   sleepFn?: (ms: number) => Promise<void>;
+  /** Live-update poll interval in ms when using the server proxy (default 2000). */
+  pollIntervalMs?: number;
 }
 
 export class BybitProvider implements MarketDataProvider {
@@ -67,6 +70,7 @@ export class BybitProvider implements MarketDataProvider {
       fetchImpl: options.fetchImpl ?? (typeof fetch !== 'undefined' ? fetch.bind(globalThis) : (() => Promise.reject(new Error('fetch not available'))) as unknown as typeof fetch),
       WebSocketCtor: options.WebSocketCtor ?? (typeof WebSocket !== 'undefined' ? WebSocket : (undefined as unknown as new (url: string) => WebSocket)),
       sleepFn: options.sleepFn ?? sleep,
+      pollIntervalMs: options.pollIntervalMs ?? 2000,
     };
   }
 
@@ -130,6 +134,46 @@ export class BybitProvider implements MarketDataProvider {
     return [];
   }
 
+  /** Latest single candle (via REST, through the proxy when useProxy is set). */
+  async fetchLatestCandle(symbol: SymbolInfo, timeframe: Timeframe): Promise<Candle | null> {
+    const candles = await this.getHistoricalCandles(symbol, timeframe, 1);
+    return candles.length > 0 ? candles[candles.length - 1]! : null;
+  }
+
+  /** Latest ticker (via REST spot tickers endpoint, through the proxy). */
+  async fetchTicker(symbol: SymbolInfo): Promise<TickerData | null> {
+    const id = symbol.providerIds[this.name];
+    if (!id) return null;
+    for (const base of this.restBases()) {
+      const url = `${base}/v5/market/tickers?symbol=${id.toUpperCase()}`;
+      const res = await safeJsonFetchWithStatus(url, {}, 15000, this.opts.fetchImpl);
+      if (res.status === 451 || res.status === 403 || res.status === 407) continue;
+      const body = res.data as { result?: { list?: unknown[] } } | null;
+      const row = Array.isArray(body?.result?.list)
+        ? (body!.result!.list![0] as Record<string, unknown> | undefined)
+        : undefined;
+      if (!row) {
+        if (res.ok) return null;
+        continue;
+      }
+      const ticker = sanitizeTicker(
+        {
+          symbol: symbol.display,
+          price: num(row.lastPrice, 0),
+          change24h: num(row.price24h, 0),
+          changePercent24h: num(row.price24hPcnt, 0) * 100,
+          high24h: num(row.highPrice24h, 0),
+          low24h: num(row.lowPrice24h, 0),
+          volume24h: num(row.volume24h, 0),
+          timestamp: tsSeconds(row.timestamp),
+        },
+        symbol.display,
+      );
+      return ticker.price > 0 ? ticker : null;
+    }
+    return null;
+  }
+
   subscribeCandles(
     symbol: SymbolInfo,
     timeframe: Timeframe,
@@ -140,6 +184,16 @@ export class BybitProvider implements MarketDataProvider {
     if (!bybitSymbol) {
       queueMicrotask(() => onStatus('error'));
       return () => undefined;
+    }
+    // When proxied, all egress is server-side: poll the REST kline endpoint
+    // through /api/bybit instead of opening a client-side WebSocket.
+    if (this.opts.useProxy) {
+      return startPollingStream({
+        candleFetcher: () => this.fetchLatestCandle(symbol, timeframe),
+        intervalMs: this.opts.pollIntervalMs,
+        onCandle,
+        onStatus,
+      });
     }
     if (!isBrowser() || !hasWebSocket()) {
       queueMicrotask(() => onStatus('error'));
@@ -198,6 +252,14 @@ export class BybitProvider implements MarketDataProvider {
     if (!bybitSymbol) {
       queueMicrotask(() => onStatus('error'));
       return () => undefined;
+    }
+    if (this.opts.useProxy) {
+      return startPollingStream({
+        tickerFetcher: () => this.fetchTicker(symbol),
+        intervalMs: this.opts.pollIntervalMs,
+        onTicker,
+        onStatus,
+      });
     }
     if (!isBrowser() || !hasWebSocket()) {
       queueMicrotask(() => onStatus('error'));

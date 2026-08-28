@@ -12,6 +12,7 @@ import { isFiniteNum } from '@/core/utils/series';
 import { tfToSeconds, type Candle, type ConnectionStatus, type SymbolInfo, type TickerData, type Timeframe } from '@/types';
 import type { CandleCallback, MarketDataProvider, StatusCallback, TickerCallback, Unsubscribe } from '../types';
 import { createMultiStreamController } from '../_stream';
+import { startPollingStream } from '../_poll';
 import {
   hasWebSocket,
   isBrowser,
@@ -68,6 +69,8 @@ export interface BitgetProviderOptions {
   WebSocketCtor?: new (url: string) => WebSocket;
   /** Sleep override (used in tests). */
   sleepFn?: (ms: number) => Promise<void>;
+  /** Live-update poll interval in ms when using the server proxy (default 2000). */
+  pollIntervalMs?: number;
 }
 
 export class BitgetProvider implements MarketDataProvider {
@@ -81,6 +84,7 @@ export class BitgetProvider implements MarketDataProvider {
       fetchImpl: options.fetchImpl ?? (typeof fetch !== 'undefined' ? fetch.bind(globalThis) : (() => Promise.reject(new Error('fetch not available'))) as unknown as typeof fetch),
       WebSocketCtor: options.WebSocketCtor ?? (typeof WebSocket !== 'undefined' ? WebSocket : (undefined as unknown as new (url: string) => WebSocket)),
       sleepFn: options.sleepFn ?? sleep,
+      pollIntervalMs: options.pollIntervalMs ?? 2000,
     };
   }
 
@@ -158,6 +162,44 @@ export class BitgetProvider implements MarketDataProvider {
     return [];
   }
 
+  /** Latest single candle (via REST, through the proxy when useProxy is set). */
+  async fetchLatestCandle(symbol: SymbolInfo, timeframe: Timeframe): Promise<Candle | null> {
+    const candles = await this.getHistoricalCandles(symbol, timeframe, 1);
+    return candles.length > 0 ? candles[candles.length - 1]! : null;
+  }
+
+  /** Latest ticker (via REST spot tickers endpoint, through the proxy). */
+  async fetchTicker(symbol: SymbolInfo): Promise<TickerData | null> {
+    const id = symbol.providerIds[this.name];
+    if (!id) return null;
+    for (const base of this.restBases()) {
+      const url = `${base}/api/v2/spot/market/tickers?symbol=${id.toUpperCase()}`;
+      const res = await safeJsonFetchWithStatus(url, {}, 15000, this.opts.fetchImpl);
+      if (res.status === 451 || res.status === 403 || res.status === 407) continue;
+      const body = res.data as { data?: unknown[] } | null;
+      const row = Array.isArray(body?.data) ? (body!.data![0] as Record<string, unknown> | undefined) : undefined;
+      if (!row) {
+        if (res.ok) return null;
+        continue;
+      }
+      const ticker = sanitizeTicker(
+        {
+          symbol: symbol.display,
+          price: num(row.last, 0),
+          change24h: num(row.priceChange, 0),
+          changePercent24h: num(row.priceChangePercent, 0),
+          high24h: num(row.high24h ?? row.high, 0),
+          low24h: num(row.low24h ?? row.low, 0),
+          volume24h: num(row.baseVolume, 0),
+          timestamp: tsSeconds(row.ts),
+        },
+        symbol.display,
+      );
+      return ticker.price > 0 ? ticker : null;
+    }
+    return null;
+  }
+
   subscribeCandles(
     symbol: SymbolInfo,
     timeframe: Timeframe,
@@ -168,6 +210,14 @@ export class BitgetProvider implements MarketDataProvider {
     if (!bitgetSymbol) {
       queueMicrotask(() => onStatus('error'));
       return () => undefined;
+    }
+    if (this.opts.useProxy) {
+      return startPollingStream({
+        candleFetcher: () => this.fetchLatestCandle(symbol, timeframe),
+        intervalMs: this.opts.pollIntervalMs,
+        onCandle,
+        onStatus,
+      });
     }
     if (!isBrowser() || !hasWebSocket()) {
       queueMicrotask(() => onStatus('error'));
@@ -227,6 +277,14 @@ export class BitgetProvider implements MarketDataProvider {
     if (!bitgetSymbol) {
       queueMicrotask(() => onStatus('error'));
       return () => undefined;
+    }
+    if (this.opts.useProxy) {
+      return startPollingStream({
+        tickerFetcher: () => this.fetchTicker(symbol),
+        intervalMs: this.opts.pollIntervalMs,
+        onTicker,
+        onStatus,
+      });
     }
     if (!isBrowser() || !hasWebSocket()) {
       queueMicrotask(() => onStatus('error'));
