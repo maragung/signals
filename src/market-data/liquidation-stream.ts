@@ -22,8 +22,14 @@ export interface LiquidationStreamOptions {
   WebSocketImpl?: typeof WebSocket;
   /** Override fetch (unused but kept for API parity). */
   fetchImpl?: typeof fetch;
+  /**
+   * If true, the stream will not attempt to connect at all. Use this
+   * when a prior REST call already confirmed the upstream is
+   * geo-blocked (451/403) and reconnecting is futile.
+   */
+  skipOnRegionBlocked?: boolean;
   onEvent?: (ev: LiquidationEvent) => void;
-  onStatus?: (status: 'connecting' | 'connected' | 'reconnecting' | 'error' | 'closed') => void;
+  onStatus?: (status: 'connecting' | 'connected' | 'reconnecting' | 'error' | 'closed' | 'region-blocked') => void;
   onError?: (err: Error) => void;
 }
 
@@ -67,10 +73,18 @@ function parsePayload(p: ForceOrderPayload): LiquidationEvent | null {
   };
 }
 
+export type LiquidationStreamStatus =
+  | 'connecting'
+  | 'connected'
+  | 'reconnecting'
+  | 'error'
+  | 'closed'
+  | 'region-blocked';
+
 export interface LiquidationStreamHandle {
   close(): void;
   recent(): LiquidationEvent[];
-  status(): 'connecting' | 'connected' | 'reconnecting' | 'error' | 'closed';
+  status(): LiquidationStreamStatus;
 }
 
 export function startLiquidationStream(opts: LiquidationStreamOptions): LiquidationStreamHandle {
@@ -86,7 +100,7 @@ export function startLiquidationStream(opts: LiquidationStreamOptions): Liquidat
   }
 
   const recentBuffer: LiquidationEvent[] = [];
-  let status: 'connecting' | 'connected' | 'reconnecting' | 'error' | 'closed' = 'connecting';
+  let status: 'connecting' | 'connected' | 'reconnecting' | 'error' | 'closed' | 'region-blocked' = 'connecting';
   let backoffIdx = 0;
   let lastMsgTs = 0;
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -101,6 +115,10 @@ export function startLiquidationStream(opts: LiquidationStreamOptions): Liquidat
 
   const connect = () => {
     if (closed) return;
+    if (opts.skipOnRegionBlocked) {
+      setStatus('region-blocked');
+      return;
+    }
     setStatus(backoffIdx === 0 ? 'connecting' : 'reconnecting');
     const url = `${FSTREAM_BASE}/${symbol}@forceOrder`;
     let socket: WebSocket;

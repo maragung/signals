@@ -31,6 +31,31 @@
   color: var(--bull);
   border-color: var(--bull);
 }
+.sourceTag[data-source='blocked'] {
+  background: rgba(252, 213, 53, 0.12);
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.regionBlocked {
+  margin-top: 6px;
+  padding: 10px 12px;
+  background: var(--bg-tertiary);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius);
+  font-size: var(--font-xs);
+  line-height: 1.5;
+}
+
+.regionBlockedTitle {
+  color: var(--warn);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.regionBlockedBody {
+  color: var(--text-secondary);
+}
 
 .meta {
   display: grid;

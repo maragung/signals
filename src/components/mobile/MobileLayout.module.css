@@ -4,6 +4,13 @@
   height: 100vh;
   width: 100vw;
   background: var(--bg-primary);
+  /* 3% page-edge margin on every side, exactly 3% of the device size
+     on each axis. Clamped to a sensible range (12px - 32px) so it
+     never collapses to sub-pixel on tiny viewports and never eats
+     too much of the screen on very large monitors. */
+  padding: clamp(12px, 3vh, 32px) clamp(12px, 3vw, 32px);
+  box-sizing: border-box;
+  gap: clamp(6px, 1vh, 8px);
   overflow: hidden;
 }
 

@@ -1,14 +1,23 @@
 import { create } from 'zustand';
 import type { FuturesSnapshot, LiquidationEvent, LiquidationHeatmap, LiquidationSide } from '@/types';
 
+export type LiquidationsStatus =
+  | 'idle'
+  | 'connecting'
+  | 'connected'
+  | 'reconnecting'
+  | 'error'
+  | 'closed'
+  | 'region-blocked';
+
 interface LiquidationsState {
   heatmap: LiquidationHeatmap | null;
   snapshot: FuturesSnapshot | null;
   recent: LiquidationEvent[];
-  status: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'error' | 'closed';
+  status: LiquidationsStatus;
   setHeatmap: (h: LiquidationHeatmap | null) => void;
   setSnapshot: (s: FuturesSnapshot | null) => void;
-  setStatus: (s: LiquidationsState['status']) => void;
+  setStatus: (s: LiquidationsStatus) => void;
   addRecent: (ev: LiquidationEvent) => void;
   addSideVolume: (side: LiquidationSide, notional: number, price: number) => void;
   reset: () => void;

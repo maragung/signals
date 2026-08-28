@@ -21,6 +21,7 @@
 // fills the rest of the price ladder.
 
 import type {
+  FuturesDataResult,
   FuturesSnapshot,
   LiquidationEvent,
   LiquidationHeatmap,
@@ -272,10 +273,23 @@ export function applyLiquidationEvent(
 }
 
 /**
+ * Detect whether an upstream response is a region block. Binance
+ * returns 451 "Unavailable For Legal Reasons" for many jurisdictions
+ * (US, UK, Canada, etc). Treat 451, 403, 407, and 429 (rate-limit at
+ * upstream) as region blocks so the UI can show a friendly message
+ * instead of a generic error.
+ */
+export function isRegionBlockedStatus(status: number): boolean {
+  return status === 451 || status === 403 || status === 407;
+}
+
+/**
  * Fetch a futures snapshot for a symbol from the public Binance
- * futures REST endpoints (all key-less). Falls back to null on any
- * failure (the caller is expected to fall back to a synthetic
- * snapshot if needed).
+ * futures REST endpoints (all key-less). Returns a discriminated
+ * result so callers can distinguish:
+ *   - { snapshot, blocked: false }  -> happy path
+ *   - { snapshot: null, blocked: true } -> region blocked (451/403/407)
+ *   - { snapshot: null, blocked: false } -> transient error (network etc)
  *
  * Uses the /api/futures proxy when available to bypass CORS in
  * the browser; the proxy forwards to fapi.binance.com.
@@ -283,7 +297,7 @@ export function applyLiquidationEvent(
 export async function fetchFuturesSnapshot(
   symbol: string,
   fetchImpl: typeof fetch = fetch,
-): Promise<FuturesSnapshot | null> {
+): Promise<{ snapshot: FuturesSnapshot | null; blocked: boolean }> {
   const useProxy = typeof window !== 'undefined';
   const base = useProxy ? '/api/futures' : 'https://fapi.binance.com';
 
@@ -293,61 +307,92 @@ export async function fetchFuturesSnapshot(
   };
 
   try {
-    const [mark, oiHist, ls, tbs] = await Promise.all([
-      fetchImpl(`${base}/fapi/v1/premiumIndex?symbol=${symbol}`, { cache: 'no-store' }).then(
-        (r) => (r.ok ? r.json() : null),
-      ).catch(() => null),
-      fetchImpl(`${base}/futures/data/openInterestHist?symbol=${symbol}&period=5m&limit=1`, { cache: 'no-store' }).then(
-        (r) => (r.ok ? r.json() : null),
-      ).catch(() => null),
-      fetchImpl(`${base}/futures/data/globalLongShortAccountRatio?symbol=${symbol}&period=5m&limit=1`, { cache: 'no-store' }).then(
-        (r) => (r.ok ? r.json() : null),
-      ).catch(() => null),
-      fetchImpl(`${base}/futures/data/takerlongshortRatio?symbol=${symbol}&period=5m&limit=1`, { cache: 'no-store' }).then(
-        (r) => (r.ok ? r.json() : null),
-      ).catch(() => null),
+    const responses = await Promise.all([
+      fetchImpl(`${base}/fapi/v1/premiumIndex?symbol=${symbol}`, { cache: 'no-store' })
+        .then((r) => ({ status: r.status, ok: r.ok, json: r.ok ? r.json() : null }))
+        .catch(() => ({ status: 0, ok: false, json: null })),
+      fetchImpl(`${base}/futures/data/openInterestHist?symbol=${symbol}&period=5m&limit=1`, { cache: 'no-store' })
+        .then((r) => ({ status: r.status, ok: r.ok, json: r.ok ? r.json() : null }))
+        .catch(() => ({ status: 0, ok: false, json: null })),
+      fetchImpl(`${base}/futures/data/globalLongShortAccountRatio?symbol=${symbol}&period=5m&limit=1`, { cache: 'no-store' })
+        .then((r) => ({ status: r.status, ok: r.ok, json: r.ok ? r.json() : null }))
+        .catch(() => ({ status: 0, ok: false, json: null })),
+      fetchImpl(`${base}/futures/data/takerlongshortRatio?symbol=${symbol}&period=5m&limit=1`, { cache: 'no-store' })
+        .then((r) => ({ status: r.status, ok: r.ok, json: r.ok ? r.json() : null }))
+        .catch(() => ({ status: 0, ok: false, json: null })),
     ]);
 
-    if (!mark || !oiHist) return null;
-    const markPrice = safeNum((mark as { markPrice?: number }).markPrice);
-    const indexPrice = safeNum((mark as { indexPrice?: number }).indexPrice);
-    const fundingRate = safeNum((mark as { lastFundingRate?: number }).lastFundingRate);
-    const nextFundingTime = safeNum((mark as { nextFundingTime?: number }).nextFundingTime);
-    const oiRow = Array.isArray(oiHist) ? (oiHist as Array<{ sumOpenInterest: string; sumOpenInterestValue: string }>)[0] : null;
+    const [mark, oiHist, ls, tbs] = responses;
+    void tbs;
+    void ls;
+
+    // Region block: if any of the data endpoints returned 451/403/407,
+    // the upstream is geo-blocking us.
+    const allStatuses = responses.map((r) => r.status);
+    if (allStatuses.some(isRegionBlockedStatus)) {
+      return { snapshot: null, blocked: true };
+    }
+    if (!mark.ok || !oiHist.ok) return { snapshot: null, blocked: false };
+
+    const markJson = await mark.json;
+    const oiJson = await oiHist.json;
+    if (!markJson || !oiJson) return { snapshot: null, blocked: false };
+
+    const markPrice = safeNum((markJson as { markPrice?: number }).markPrice);
+    const indexPrice = safeNum((markJson as { indexPrice?: number }).indexPrice);
+    const fundingRate = safeNum((markJson as { lastFundingRate?: number }).lastFundingRate);
+    const nextFundingTime = safeNum((markJson as { nextFundingTime?: number }).nextFundingTime);
+    const oiRow = Array.isArray(oiJson) ? (oiJson as Array<{ sumOpenInterest: string; sumOpenInterestValue: string }>)[0] : null;
     const openInterest = safeNum(oiRow?.sumOpenInterest);
     const openInterestUsd = safeNum(oiRow?.sumOpenInterestValue);
-    const longShortRatio = safeNum(Array.isArray(ls) ? (ls as Array<{ longShortRatio: string }>)[0]?.longShortRatio : 0);
-    const takerBuySellRatio = safeNum(
-      Array.isArray(tbs) ? (tbs as Array<{ buySellRatio: string }>)[0]?.buySellRatio : 0,
-    );
-    if (!isFiniteNum(markPrice) || markPrice <= 0) return null;
+
+    let longShortRatio = 1;
+    let takerBuySellRatio = 1;
+    if (ls.ok) {
+      const lsJson = await ls.json;
+      if (Array.isArray(lsJson)) {
+        const v = safeNum((lsJson as Array<{ longShortRatio: string }>)[0]?.longShortRatio);
+        if (v > 0) longShortRatio = v;
+      }
+    }
+    if (tbs.ok) {
+      const tbsJson = await tbs.json;
+      if (Array.isArray(tbsJson)) {
+        const v = safeNum((tbsJson as Array<{ buySellRatio: string }>)[0]?.buySellRatio);
+        if (v > 0) takerBuySellRatio = v;
+      }
+    }
+
+    if (!isFiniteNum(markPrice) || markPrice <= 0) return { snapshot: null, blocked: false };
     return {
-      symbol,
-      markPrice,
-      indexPrice: isFiniteNum(indexPrice) && indexPrice > 0 ? indexPrice : markPrice,
-      fundingRate,
-      nextFundingTime,
-      openInterest,
-      openInterestUsd,
-      longShortRatio: longShortRatio > 0 ? longShortRatio : 1,
-      takerBuySellRatio: takerBuySellRatio > 0 ? takerBuySellRatio : 1,
-      ts: Date.now(),
+      snapshot: {
+        symbol,
+        markPrice,
+        indexPrice: isFiniteNum(indexPrice) && indexPrice > 0 ? indexPrice : markPrice,
+        fundingRate,
+        nextFundingTime,
+        openInterest,
+        openInterestUsd,
+        longShortRatio,
+        takerBuySellRatio,
+        ts: Date.now(),
+      },
+      blocked: false,
     };
   } catch {
-    return null;
+    return { snapshot: null, blocked: false };
   }
 }
 
 /**
  * Fetch historical force orders for the last `hours` window. Returns
- * an array of normalised events sorted descending by time. Returns
- * an empty array on any failure.
+ * a discriminated result so callers can detect region blocks.
  */
 export async function fetchRecentForceOrders(
   symbol: string,
   hours = 24,
   fetchImpl: typeof fetch = fetch,
-): Promise<LiquidationEvent[]> {
+): Promise<{ events: LiquidationEvent[]; blocked: boolean }> {
   const useProxy = typeof window !== 'undefined';
   const base = useProxy ? '/api/futures' : 'https://fapi.binance.com';
   const startTime = Date.now() - hours * 3600 * 1000;
@@ -358,7 +403,8 @@ export async function fetchRecentForceOrders(
   try {
     const url = `${base}/fapi/v1/allForceOrders?symbol=${symbol}&startTime=${startTime}&limit=1000`;
     const res = await fetchImpl(url, { cache: 'no-store' });
-    if (!res.ok) return [];
+    if (isRegionBlockedStatus(res.status)) return { events: [], blocked: true };
+    if (!res.ok) return { events: [], blocked: false };
     const data = (await res.json()) as Array<{
       symbol: string;
       side: string;
@@ -367,8 +413,8 @@ export async function fetchRecentForceOrders(
       executedQty: string;
       avgPrice?: string;
     }>;
-    if (!Array.isArray(data)) return [];
-    return data.map((row) => {
+    if (!Array.isArray(data)) return { events: [], blocked: false };
+    const events: LiquidationEvent[] = data.map((row) => {
       const price = safeNum(row.avgPrice ?? row.price);
       const qty = safeNum(row.executedQty);
       // Binance convention: SELL = long liquidation (force-closed long),
@@ -383,8 +429,9 @@ export async function fetchRecentForceOrders(
         notional: price * qty,
       };
     });
+    return { events, blocked: false };
   } catch {
-    return [];
+    return { events: [], blocked: false };
   }
 }
 
@@ -424,3 +471,34 @@ export function buildHeatmapFromEvents(
     meta: {},
   };
 }
+
+/**
+ * Top-level fetcher that bundles the snapshot and the recent
+ * liquidation events into a single result and propagates the
+ * region-blocked signal. Callers should pass the result to
+ * `buildHeatmapFromEvents` or `synthesizeHeatmap` depending on
+ * whether events are present.
+ */
+export async function fetchHeatmapSnapshot(
+  symbol: string,
+  hours = 24,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ snapshot: FuturesSnapshot | null; events: LiquidationEvent[]; blocked: boolean; degraded: boolean }> {
+  const [snap, ev] = await Promise.all([
+    fetchFuturesSnapshot(symbol, fetchImpl),
+    fetchRecentForceOrders(symbol, hours, fetchImpl).catch(() => ({ events: [] as LiquidationEvent[], blocked: false })),
+  ]);
+  const blocked = snap.blocked || ev.blocked;
+  // If snapshot failed but events came through (or vice versa), mark
+  // as degraded so callers can show a small "partial data" hint.
+  const degraded = !blocked && (snap.snapshot === null || (ev.events.length === 0 && snap.snapshot !== null));
+  return {
+    snapshot: snap.snapshot,
+    events: ev.events,
+    blocked,
+    degraded,
+  };
+}
+
+// Re-export the type so consumers can import it from this module too.
+export type { FuturesDataResult };

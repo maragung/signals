@@ -5,6 +5,8 @@ import {
   applyLiquidationEvent,
   fetchFuturesSnapshot,
   fetchRecentForceOrders,
+  fetchHeatmapSnapshot,
+  isRegionBlockedStatus,
 } from './liquidation-heatmap';
 import type { FuturesSnapshot, LiquidationEvent } from '@/types';
 
@@ -151,6 +153,7 @@ describe('fetchFuturesSnapshot', () => {
       if (url.includes('premiumIndex')) {
         return Promise.resolve({
           ok: true,
+          status: 200,
           json: () =>
             Promise.resolve({
               symbol: 'BTCUSDT',
@@ -164,6 +167,7 @@ describe('fetchFuturesSnapshot', () => {
       if (url.includes('openInterestHist')) {
         return Promise.resolve({
           ok: true,
+          status: 200,
           json: () =>
             Promise.resolve([{ sumOpenInterest: '100000', sumOpenInterestValue: '5000000000' }]),
         });
@@ -171,29 +175,41 @@ describe('fetchFuturesSnapshot', () => {
       if (url.includes('globalLongShortAccountRatio')) {
         return Promise.resolve({
           ok: true,
+          status: 200,
           json: () => Promise.resolve([{ longShortRatio: '1.2' }]),
         });
       }
       if (url.includes('takerlongshortRatio')) {
         return Promise.resolve({
           ok: true,
+          status: 200,
           json: () => Promise.resolve([{ buySellRatio: '0.95' }]),
         });
       }
-      return Promise.resolve({ ok: false, json: () => Promise.resolve(null) });
+      return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve(null) });
     };
-    const snap = await fetchFuturesSnapshot('BTCUSDT', fetchMock as unknown as typeof fetch);
-    expect(snap).not.toBeNull();
-    expect(snap!.markPrice).toBe(50000);
-    expect(snap!.openInterestUsd).toBe(5_000_000_000);
-    expect(snap!.longShortRatio).toBe(1.2);
-    expect(snap!.takerBuySellRatio).toBe(0.95);
+    const result = await fetchFuturesSnapshot('BTCUSDT', fetchMock as unknown as typeof fetch);
+    expect(result.blocked).toBe(false);
+    expect(result.snapshot).not.toBeNull();
+    expect(result.snapshot!.markPrice).toBe(50000);
+    expect(result.snapshot!.openInterestUsd).toBe(5_000_000_000);
+    expect(result.snapshot!.longShortRatio).toBe(1.2);
+    expect(result.snapshot!.takerBuySellRatio).toBe(0.95);
   });
 
-  it('returns null on failure', async () => {
-    const fetchMock = () => Promise.resolve({ ok: false });
-    const snap = await fetchFuturesSnapshot('BTCUSDT', fetchMock as unknown as typeof fetch);
-    expect(snap).toBeNull();
+  it('returns null snapshot on failure', async () => {
+    const fetchMock = () => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve(null) });
+    const result = await fetchFuturesSnapshot('BTCUSDT', fetchMock as unknown as typeof fetch);
+    expect(result.blocked).toBe(false);
+    expect(result.snapshot).toBeNull();
+  });
+
+  it('detects region block (HTTP 451) and returns blocked=true', async () => {
+    const fetchMock = () =>
+      Promise.resolve({ ok: false, status: 451, json: () => Promise.resolve({ error: 'region' }) });
+    const result = await fetchFuturesSnapshot('BTCUSDT', fetchMock as unknown as typeof fetch);
+    expect(result.blocked).toBe(true);
+    expect(result.snapshot).toBeNull();
   });
 });
 
@@ -202,6 +218,7 @@ describe('fetchRecentForceOrders', () => {
     const fetchMock = () =>
       Promise.resolve({
         ok: true,
+        status: 200,
         json: () =>
           Promise.resolve([
             {
@@ -214,17 +231,83 @@ describe('fetchRecentForceOrders', () => {
             },
           ]),
       });
-    const events = await fetchRecentForceOrders('BTCUSDT', 24, fetchMock as unknown as typeof fetch);
-    expect(events).toHaveLength(1);
-    expect(events[0]!.side).toBe('long');
-    expect(events[0]!.price).toBe(50000);
-    expect(events[0]!.quantity).toBe(0.5);
-    expect(events[0]!.notional).toBe(25000);
+    const result = await fetchRecentForceOrders('BTCUSDT', 24, fetchMock as unknown as typeof fetch);
+    expect(result.blocked).toBe(false);
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0]!.side).toBe('long');
+    expect(result.events[0]!.price).toBe(50000);
+    expect(result.events[0]!.quantity).toBe(0.5);
+    expect(result.events[0]!.notional).toBe(25000);
   });
 
-  it('returns empty array on error', async () => {
-    const fetchMock = () => Promise.resolve({ ok: false });
-    const events = await fetchRecentForceOrders('BTCUSDT', 24, fetchMock as unknown as typeof fetch);
-    expect(events).toEqual([]);
+  it('returns empty events on error', async () => {
+    const fetchMock = () => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve(null) });
+    const result = await fetchRecentForceOrders('BTCUSDT', 24, fetchMock as unknown as typeof fetch);
+    expect(result.blocked).toBe(false);
+    expect(result.events).toEqual([]);
+  });
+
+  it('detects region block (HTTP 451)', async () => {
+    const fetchMock = () =>
+      Promise.resolve({ ok: false, status: 451, json: () => Promise.resolve({ error: 'region' }) });
+    const result = await fetchRecentForceOrders('BTCUSDT', 24, fetchMock as unknown as typeof fetch);
+    expect(result.blocked).toBe(true);
+    expect(result.events).toEqual([]);
+  });
+});
+
+describe('fetchHeatmapSnapshot', () => {
+  it('bundles snapshot + events + blocked flag', async () => {
+    const fetchMock = (url: string) => {
+      if (url.includes('allForceOrders')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve([]),
+        });
+      }
+      if (url.includes('premiumIndex')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ markPrice: '50000', lastFundingRate: '0.0001' }),
+        });
+      }
+      if (url.includes('openInterestHist')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve([{ sumOpenInterest: '1', sumOpenInterestValue: '1' }]),
+        });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) });
+    };
+    const result = await fetchHeatmapSnapshot('BTCUSDT', 24, fetchMock as unknown as typeof fetch);
+    expect(result.blocked).toBe(false);
+    expect(result.snapshot).not.toBeNull();
+    expect(result.snapshot!.markPrice).toBe(50000);
+  });
+
+  it('returns blocked=true when any upstream returns 451', async () => {
+    const fetchMock = () =>
+      Promise.resolve({ ok: false, status: 451, json: () => Promise.resolve({ error: 'region' }) });
+    const result = await fetchHeatmapSnapshot('BTCUSDT', 24, fetchMock as unknown as typeof fetch);
+    expect(result.blocked).toBe(true);
+    expect(result.snapshot).toBeNull();
+    expect(result.events).toEqual([]);
+  });
+});
+
+describe('isRegionBlockedStatus', () => {
+  it('returns true for 451 / 403 / 407', () => {
+    expect(isRegionBlockedStatus(451)).toBe(true);
+    expect(isRegionBlockedStatus(403)).toBe(true);
+    expect(isRegionBlockedStatus(407)).toBe(true);
+  });
+  it('returns false for 200, 404, 500, 429', () => {
+    expect(isRegionBlockedStatus(200)).toBe(false);
+    expect(isRegionBlockedStatus(404)).toBe(false);
+    expect(isRegionBlockedStatus(500)).toBe(false);
+    expect(isRegionBlockedStatus(429)).toBe(false);
   });
 });

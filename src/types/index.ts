@@ -350,6 +350,21 @@ export interface LiquidationHeatmap {
   };
 }
 
+/**
+ * Result of attempting to fetch futures data. `blocked` is true when
+ * the upstream returned a 451 (geo-blocked) or 403 (forbidden),
+ * which means we should stop trying to subscribe to the live
+ * liquidation stream and just show a friendly "unavailable in your
+ * region" message instead of an error.
+ */
+export interface FuturesDataResult {
+  snapshot: FuturesSnapshot | null;
+  events: LiquidationEvent[];
+  blocked: boolean;
+  /** True when the snapshot is from cached or fallback sources, not live. */
+  degraded: boolean;
+}
+
 export interface FuturesSnapshot {
   symbol: string;
   markPrice: number;

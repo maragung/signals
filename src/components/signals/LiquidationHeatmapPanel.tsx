@@ -1,5 +1,6 @@
 'use client';
 
+import * as React from 'react';
 import { useMemo } from 'react';
 import { useLiquidations } from '@/stores/liquidations';
 import { useSettings } from '@/stores/settings';
@@ -40,6 +41,28 @@ export function LiquidationHeatmapPanel() {
   }
 
   if (!heatmap) {
+    if (status === 'region-blocked') {
+      return (
+        <div className={styles.panel}>
+          <h3 className={styles.title}>
+            Liquidation Heatmap
+            <span className={styles.sourceTag} data-source="blocked">
+              unavailable
+            </span>
+          </h3>
+          <div className={styles.regionBlocked}>
+            <div className={styles.regionBlockedTitle}>Futures data is unavailable in your region</div>
+            <div className={styles.regionBlockedBody}>
+              Binance geo-blocks its futures endpoints (mark price, open
+              interest, liquidation feed) in some jurisdictions (commonly
+              US, UK, Canada). All other analytics still work — spot
+              candles, indicators, scoring, projection, MTF, SNR/SND,
+              market structure, drawing tools, and alerts.
+            </div>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className={styles.panel}>
         <h3 className={styles.title}>Liquidation Heatmap</h3>
