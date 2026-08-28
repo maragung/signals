@@ -317,11 +317,13 @@ describe('ProviderManager throttling', () => {
       manager.subscribeCandles(makeSymbol(), '1m', (c) => seen.push(c), () => undefined);
       // First emission goes through immediately (lastEmitTime=0 initial).
       expect(seen.length).toBe(1);
-      // Advance the throttle window and drain pending.
+      expect(seen[0]?.close).toBe(100);
+      // Advance the throttle window so the coalesced trailing emission fires.
       vi.advanceTimersByTime(200);
-      // After 200ms we should have at most 3 emissions.
-      expect(seen.length).toBeLessThanOrEqual(3);
-      // And the final pending should be the last candle emitted.
+      // A burst of 20 must collapse to exactly 2 emissions: one immediate
+      // (the first candle) and one trailing (the last candle received).
+      expect(seen.length).toBe(2);
+      expect(seen[0]?.close).toBe(100);
       expect(seen[seen.length - 1]?.close).toBe(119);
     } finally {
       vi.useRealTimers();

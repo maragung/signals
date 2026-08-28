@@ -142,11 +142,14 @@ export class ProviderManager {
     const key = this.stateKey(symbol.id, 'candle', timeframe);
     const state = this.getOrCreateState(key);
 
-    // Wrap onStatus so we can also clear pending state on close.
+    // Wrap onStatus so we flush any pending burst on close. We deliberately
+    // do NOT call clearState here: a burst that arrived in the same tick as
+    // the 'closed' status still has a coalesced trailing emission owed to the
+    // consumer, and clearing the throttle/pending state would drop it. The
+    // throttle timer (if any) will fire and deliver the trailing candle.
     const wrappedStatus: StatusCallback = (s) => {
       if (s === 'closed') {
-        this.flushPendingCandle(state, onCandle);
-        this.clearState(state);
+        this.flushPending(state, onCandle);
       }
       onStatus(s);
     };
@@ -266,27 +269,46 @@ export class ProviderManager {
 
   private flushPending(state: SymbolProviderState, onCandle: CandleCallback): void {
     if (state.pendingByTime.size === 0) return;
-    // Sort times ascending so consumers see them in order.
+    // Sort times ascending so consumers see them in order. Emit every
+    // pending candle that the throttle window allows. After the first
+    // emission, the elapsed window resets to 0, so for throttleMs > 0
+    // only one leading emission is possible per call.
     const times = Array.from(state.pendingByTime.keys()).sort((a, b) => a - b);
     for (const t of times) {
       const c = state.pendingByTime.get(t);
       if (!c) continue;
-      state.pendingByTime.delete(t);
       const elapsed = Date.now() - state.lastEmitMs;
-      if (elapsed >= this.throttleMs && !state.throttleTimer) {
+      if (elapsed >= this.throttleMs) {
+        state.pendingByTime.delete(t);
         this.emitOne(state, c, onCandle);
-      } else {
-        // Throttled: stash the rest for later.
-        state.pendingByTime.set(t, c);
-        const wait = Math.max(0, this.throttleMs - elapsed);
-        if (!state.throttleTimer) {
-          state.throttleTimer = setTimeout(() => {
-            state.throttleTimer = null;
-            this.flushPending(state, onCandle);
-          }, wait);
-        }
-        return;
+        continue;
       }
+      // Throttled: the remaining candles will be coalesced into a single
+      // trailing emission below. Stop iterating.
+      break;
+    }
+    // Coalesce all remaining pending candles into the latest one and
+    // schedule a single trailing emission after the throttle window.
+    // This bounds a burst of N updates to at most 2 emissions per window
+    // (1 immediate + 1 trailing) regardless of N.
+    if (state.pendingByTime.size > 0 && !state.throttleTimer) {
+      const wait = Math.max(0, this.throttleMs - (Date.now() - state.lastEmitMs));
+      state.throttleTimer = setTimeout(() => {
+        state.throttleTimer = null;
+        if (state.pendingByTime.size > 0) {
+          // Emit only the latest pending candle; discard the rest
+          // (they are superseded by the latest in a burst).
+          let latestT = -Infinity;
+          for (const t of state.pendingByTime.keys()) {
+            if (t > latestT) latestT = t;
+          }
+          const latestC = state.pendingByTime.get(latestT);
+          if (latestC) {
+            this.emitOne(state, latestC, onCandle);
+          }
+          state.pendingByTime.clear();
+        }
+      }, wait);
     }
   }
 
