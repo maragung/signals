@@ -1,15 +1,15 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 
 let cachedManager: unknown = null;
 
 export function useProviderManagerInstance(): unknown {
-  const ref = useRef<unknown>(null);
+  const [manager, setManager] = useState<unknown>(cachedManager);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (cachedManager) {
-      ref.current = cachedManager;
+      setManager(cachedManager);
       return;
     }
     let cancelled = false;
@@ -17,11 +17,11 @@ export function useProviderManagerInstance(): unknown {
       const mod = await import('@/providers');
       if (cancelled) return;
       cachedManager = mod.createProviderManager();
-      ref.current = cachedManager;
+      if (!cancelled) setManager(cachedManager);
     })();
     return () => {
       cancelled = true;
     };
   }, []);
-  return ref.current;
+  return manager;
 }
