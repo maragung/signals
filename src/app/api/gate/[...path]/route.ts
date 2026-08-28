@@ -40,7 +40,6 @@ function takeToken(key: string): boolean {
 }
 
 export const dynamic = 'force-dynamic';
-export const revalidate = REVALIDATE_SECONDS;
 
 function clientKey(req: NextRequest): string {
   const fwd = req.headers.get('x-forwarded-for');
@@ -52,7 +51,7 @@ function clientKey(req: NextRequest): string {
 }
 
 interface RouteContext {
-  params: { path?: string[] };
+  params: Promise<{ path?: string[] }>;
 }
 
 async function handle(req: NextRequest, context: RouteContext): Promise<NextResponse> {
@@ -63,7 +62,7 @@ async function handle(req: NextRequest, context: RouteContext): Promise<NextResp
       headers: { 'content-type': 'application/json', 'retry-after': '60' },
     });
   }
-  const segments = context.params?.path ?? [];
+  const segments = (await context.params)?.path ?? [];
   for (const seg of segments) {
     if (seg.includes('..') || seg.includes('\\')) {
       return new NextResponse(JSON.stringify({ error: 'bad_path' }), {

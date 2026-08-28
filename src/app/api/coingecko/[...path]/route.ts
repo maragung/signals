@@ -49,7 +49,6 @@ function takeToken(key: string): boolean {
 // -------- Route handlers --------
 
 export const dynamic = 'force-dynamic';
-export const revalidate = REVALIDATE_SECONDS;
 
 function clientKey(req: NextRequest): string {
   // Prefer x-forwarded-for; fall back to a global bucket if not available.
@@ -62,7 +61,7 @@ function clientKey(req: NextRequest): string {
 }
 
 interface RouteContext {
-  params: { path?: string[] };
+  params: Promise<{ path?: string[] }>;
 }
 
 async function handle(req: NextRequest, context: RouteContext): Promise<NextResponse> {
@@ -78,7 +77,7 @@ async function handle(req: NextRequest, context: RouteContext): Promise<NextResp
     });
   }
 
-  const segments = context.params?.path ?? [];
+  const segments = (await context.params)?.path ?? [];
   // Reject path traversal attempts
   for (const seg of segments) {
     if (seg.includes('..') || seg.includes('\\')) {
