@@ -85,7 +85,9 @@ export class BybitProvider implements MarketDataProvider {
   }
 
   private wsBases(): string[] {
-    return this.opts.useProxy ? [`${PROXY_BASE}/v5/public/spot`] : WS_BASES;
+    // WebSockets cannot be relayed through the REST /api proxy, so live
+    // streams always connect directly to the provider's public wss endpoint.
+    return WS_BASES;
   }
 
   async getHistoricalCandles(

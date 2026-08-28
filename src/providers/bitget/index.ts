@@ -99,7 +99,9 @@ export class BitgetProvider implements MarketDataProvider {
   }
 
   private wsBases(): string[] {
-    return this.opts.useProxy ? [`${PROXY_BASE}/spot/v1/stream`] : WS_BASES;
+    // WebSockets cannot be relayed through the REST /api proxy, so live
+    // streams always connect directly to the provider's public wss endpoint.
+    return WS_BASES;
   }
 
   async getHistoricalCandles(

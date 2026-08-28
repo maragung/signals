@@ -68,12 +68,17 @@ export function createProviderManager(options: CreateProviderManagerOptions = {}
   const symbols = options.symbols ?? SYMBOLS;
   const manager = new ProviderManager(options.manager);
 
-  const binance = new BinanceProvider(options.binance ?? {});
-  const bybit = new BybitProvider(options.bybit ?? {});
-  const okx = new OkxProvider(options.okx ?? {});
-  const gate = new GateProvider(options.gate ?? {});
-  const bitget = new BitgetProvider(options.bitget ?? {});
-  const coingecko = new CoinGeckoProvider(options.coingecko ?? {});
+  // Route all REST market data through the server-side /api/* proxies so the
+  // request originates from the Next.js server (not the user's browser). This
+  // avoids client-side geo-blocks (HTTP 451/403) on Binance/Bybit/etc. in
+  // restricted regions. WebSocket streams have no server proxy in this app, so
+  // wsBases() in each provider keeps using the real public wss endpoints.
+  const binance = new BinanceProvider({ useProxy: true, ...options.binance });
+  const bybit = new BybitProvider({ useProxy: true, ...options.bybit });
+  const okx = new OkxProvider({ useProxy: true, ...options.okx });
+  const gate = new GateProvider({ useProxy: true, ...options.gate });
+  const bitget = new BitgetProvider({ useProxy: true, ...options.bitget });
+  const coingecko = new CoinGeckoProvider({ useProxy: true, ...options.coingecko });
 
   const providers: MarketDataProvider[] = [binance, bybit, okx, gate, bitget, coingecko];
 
