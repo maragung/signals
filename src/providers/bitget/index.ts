@@ -30,32 +30,32 @@ const PROXY_BASE = '/api/bitget';
 
 // Bitget v2 granularity strings actually supported by the API.
 const GRAN_STRING: Record<Timeframe, string> = {
-  '1m': '1m',
-  '3m': '1m', // unsupported -> use 1m, aggregate 3
-  '5m': '5m',
-  '15m': '15m',
-  '30m': '30m',
-  '1h': '1H',
-  '2h': '1H', // unsupported -> use 1H, aggregate 2
-  '4h': '4H',
-  '6h': '6H',
-  '12h': '12H',
-  '1d': '1D',
-  '1w': '1W',
+  '1m': '1min',
+  '3m': '1min', // unsupported -> use 1min, aggregate 3
+  '5m': '5min',
+  '15m': '15min',
+  '30m': '30min',
+  '1h': '1h',
+  '2h': '1h', // unsupported -> use 1h, aggregate 2
+  '4h': '4h',
+  '6h': '6h',
+  '12h': '12h',
+  '1d': '1day',
+  '1w': '1week',
   '1M': '1M',
 };
 
 const GRAN_SECONDS: Record<string, number> = {
-  '1m': 60,
-  '5m': 300,
-  '15m': 900,
-  '30m': 1800,
-  '1H': 3600,
-  '4H': 14400,
-  '6H': 21600,
-  '12H': 43200,
-  '1D': 86400,
-  '1W': 604800,
+  '1min': 60,
+  '5min': 300,
+  '15min': 900,
+  '30min': 1800,
+  '1h': 3600,
+  '4h': 14400,
+  '6h': 21600,
+  '12h': 43200,
+  '1day': 86400,
+  '1week': 604800,
   '1M': 2592000,
 };
 
