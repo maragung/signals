@@ -24,15 +24,26 @@ import {
   isBrowser,
   makeStatusEmitter,
   num,
-  safeJsonFetch,
+  safeJsonFetchWithStatus,
   sanitizeCandle,
   sanitizeTicker,
   sleep,
   tsSeconds,
 } from '../_utils';
 
-const REST_BASE = 'https://api.binance.com';
-const WS_BASE = 'wss://stream.binance.com:9443/ws';
+// Multiple upstream REST + WS servers for resilience. The first entry MUST
+// remain the canonical Binance endpoint so the existing MockWebSocket tests
+// (which expect wss://stream.binance.com:9443/ws) keep passing.
+const REST_BASES = [
+  'https://api.binance.com',
+  'https://api1.binance.com',
+  'https://api2.binance.com',
+  'https://data-api.binance.vision',
+];
+const WS_BASES = [
+  'wss://stream.binance.com:9443/ws',
+  'wss://stream.binance.com:443/ws',
+];
 const PROXY_BASE = '/api/binance';
 
 const HEARTBEAT_TIMEOUT_MS = 60_000;
@@ -80,7 +91,11 @@ export class BinanceProvider implements MarketDataProvider {
   }
 
   private restBase(): string {
-    return this.opts.useProxy ? PROXY_BASE : REST_BASE;
+    return this.opts.useProxy ? PROXY_BASE : REST_BASES[0]!;
+  }
+
+  private restBases(): string[] {
+    return this.opts.useProxy ? [PROXY_BASE] : REST_BASES;
   }
 
   async getHistoricalCandles(
@@ -103,8 +118,27 @@ export class BinanceProvider implements MarketDataProvider {
       // Binance expects ms.
       params.set('endTime', String(Math.floor((endTime as number) * 1000)));
     }
-    const url = `${this.restBase()}/api/v3/klines?${params.toString()}`;
-    const data = await safeJsonFetch(url, {}, 15000, this.opts.fetchImpl);
+    // Try each upstream REST base in order; return the first non-empty result.
+    let lastData: unknown = null;
+    for (const base of this.restBases()) {
+      const url = `${base}/api/v3/klines?${params.toString()}`;
+      const res = await safeJsonFetchWithStatus(url, {}, 15000, this.opts.fetchImpl);
+      if (res.data !== null && Array.isArray(res.data)) {
+        lastData = res.data;
+        break;
+      }
+      // If the upstream explicitly geo-blocked us (451/403/407) there is no
+      // point retrying the same host family; fall through to the next base.
+      if (res.status === 451 || res.status === 403 || res.status === 407) {
+        continue;
+      }
+      // Null body but 2xx — treat as empty and stop (Binance returned []).
+      if (res.ok) {
+        lastData = res.data;
+        break;
+      }
+    }
+    const data = lastData;
     if (!Array.isArray(data)) return [];
     // Binance returns open time in ms; convert to seconds (our canonical unit).
     const tuples = (data as number[][]).map((row) => {
@@ -154,31 +188,23 @@ export class BinanceProvider implements MarketDataProvider {
 
     const stream = `${binanceSymbol.toLowerCase()}@kline_${TIMEFRAME_TO_BINANCE[timeframe]}`;
     const emitStatus = makeStatusEmitter(onStatus);
-    const controller = createStreamController({
-      url: `${WS_BASE}/${stream}`,
-      symbol,
-      kind: 'kline',
-      onStatus: emitStatus,
-      WebSocketCtor: this.opts.WebSocketCtor,
-      sleepFn: this.opts.sleepFn,
-      onMessage: (raw) => {
-        const parsed = parseWsJson(raw);
-        if (!parsed || typeof parsed !== 'object') return;
-        const obj = parsed as Record<string, unknown>;
-        const k = obj.k as Record<string, unknown> | undefined;
-        if (!k) return;
-        const candle = sanitizeCandle({
-          time: tsSeconds(k.t),
-          open: num(k.o, NaN),
-          high: num(k.h, NaN),
-          low: num(k.l, NaN),
-          close: num(k.c, NaN),
-          volume: num(k.v, 0),
-        });
-        if (candle) onCandle(candle);
-      },
+    const urls = WS_BASES.map((b) => `${b}/${stream}`);
+    return this.startWsWithFallback(urls, emitStatus, (raw) => {
+      const parsed = parseWsJson(raw);
+      if (!parsed || typeof parsed !== 'object') return;
+      const obj = parsed as Record<string, unknown>;
+      const k = obj.k as Record<string, unknown> | undefined;
+      if (!k) return;
+      const candle = sanitizeCandle({
+        time: tsSeconds(k.t),
+        open: num(k.o, NaN),
+        high: num(k.h, NaN),
+        low: num(k.l, NaN),
+        close: num(k.c, NaN),
+        volume: num(k.v, 0),
+      });
+      if (candle) onCandle(candle);
     });
-    return () => controller.close();
   }
 
   // ---------------- internal: ticker stream ----------------
@@ -200,34 +226,79 @@ export class BinanceProvider implements MarketDataProvider {
 
     const stream = `${binanceSymbol.toLowerCase()}@ticker`;
     const emitStatus = makeStatusEmitter(onStatus);
-    const controller = createStreamController({
-      url: `${WS_BASE}/${stream}`,
-      symbol,
-      kind: 'ticker',
-      onStatus: emitStatus,
-      WebSocketCtor: this.opts.WebSocketCtor,
-      sleepFn: this.opts.sleepFn,
-      onMessage: (raw) => {
-        const parsed = parseWsJson(raw);
-        if (!parsed || typeof parsed !== 'object') return;
-        const obj = parsed as Record<string, unknown>;
-        const ticker = sanitizeTicker(
-          {
-            symbol: typeof obj.s === 'string' ? (obj.s as string) : symbol.display,
-            price: num(obj.c, 0),
-            change24h: num(obj.p, 0),
-            changePercent24h: num(obj.P, 0),
-            high24h: num(obj.h, 0),
-            low24h: num(obj.l, 0),
-            volume24h: num(obj.v, 0),
-            timestamp: tsSeconds(obj.E),
-          },
-          symbol.display,
-        );
-        if (ticker.price > 0) onTicker(ticker);
-      },
+    const urls = WS_BASES.map((b) => `${b}/${stream}`);
+    return this.startWsWithFallback(urls, emitStatus, (raw) => {
+      const parsed = parseWsJson(raw);
+      if (!parsed || typeof parsed !== 'object') return;
+      const obj = parsed as Record<string, unknown>;
+      const ticker = sanitizeTicker(
+        {
+          symbol: typeof obj.s === 'string' ? (obj.s as string) : symbol.display,
+          price: num(obj.c, 0),
+          change24h: num(obj.p, 0),
+          changePercent24h: num(obj.P, 0),
+          high24h: num(obj.h, 0),
+          low24h: num(obj.l, 0),
+          volume24h: num(obj.v, 0),
+          timestamp: tsSeconds(obj.E),
+        },
+        symbol.display,
+      );
+      if (ticker.price > 0) onTicker(ticker);
     });
-    return () => controller.close();
+  }
+
+  /**
+   * Drive `createStreamController` across multiple WS URLs. If a base emits
+   * `error` before any connection succeeded we move to the next URL; only once
+   * every URL has failed do we surface `error` to the consumer (which lets the
+   * manager fail over to the next provider). The existing `createStreamController`
+   * itself is left untouched (its behavior/tests are unchanged).
+   */
+  private startWsWithFallback(
+    urls: string[],
+    onStatus: StatusCallback,
+    onMessage: (raw: string) => void,
+  ): Unsubscribe {
+    let idx = 0;
+    let closed = false;
+    let controller: { close: () => void } | null = null;
+
+    const connectNext = () => {
+      if (closed || idx >= urls.length) {
+        if (!closed) onStatus('error');
+        return;
+      }
+      if (controller) controller.close();
+      const url = urls[idx]!;
+      controller = createStreamController({
+        url,
+        symbol: undefined as unknown as SymbolInfo,
+        kind: 'kline',
+        onStatus: (s) => {
+          if (s === 'closed' && !closed) return; // internal transition
+          if (s === 'error') {
+            if (idx < urls.length - 1) {
+              idx += 1;
+              connectNext();
+              return;
+            }
+            onStatus('error');
+            return;
+          }
+          onStatus(s);
+        },
+        WebSocketCtor: this.opts.WebSocketCtor,
+        sleepFn: this.opts.sleepFn,
+        onMessage,
+      });
+    };
+
+    connectNext();
+    return () => {
+      closed = true;
+      controller?.close();
+    };
   }
 }
 

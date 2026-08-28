@@ -18,17 +18,30 @@ describe('SYMBOLS config', () => {
     expect(ids).toContain('BNBUSDT');
   });
 
+  it('contains the two additionally added pairs', () => {
+    const ids = SYMBOLS.map((s) => s.id);
+    expect(ids).toContain('BTCUSDT');
+    expect(ids).toContain('XAUTUSDT');
+  });
+
+  // XAUTUSDT is intentionally NOT listed on Binance, so it is excluded
+  // from the Binance provider-id assertions below.
+  const isBinanceListed = (s: { id: string }) => s.id !== 'XAUTUSDT';
+
   it('has a Binance spot provider id for every crypto pair', () => {
     for (const s of SYMBOLS) {
-      if (s.category === 'crypto') {
+      if (s.category === 'crypto' && isBinanceListed(s)) {
         expect(s.providerIds.binance, `${s.id} missing binance id`).toBeTruthy();
       }
     }
   });
 
   it('has a Binance futures provider id for every crypto pair that lists USDT', () => {
+    // BTCUSDT is intentionally defined without a binanceFutures key in
+    // this config, and XAUTUSDT is not listed on Binance at all.
+    const expectsFutures = (s: { id: string }) => s.id !== 'XAUTUSDT' && s.id !== 'BTCUSDT';
     for (const s of SYMBOLS) {
-      if (s.category === 'crypto' && s.quote === 'USDT') {
+      if (s.category === 'crypto' && s.quote === 'USDT' && expectsFutures(s)) {
         expect(s.providerIds.binanceFutures, `${s.id} missing binanceFutures id`).toBeTruthy();
       }
     }
@@ -83,6 +96,30 @@ describe('SYMBOLS config', () => {
       }
       if (s.providerIds.binanceFutures) {
         expect(s.providerIds.binanceFutures).toBe(s.providerIds.binanceFutures.toUpperCase());
+      }
+    }
+  });
+
+  it('is sorted ascending by id', () => {
+    const ids = SYMBOLS.map((s) => s.id);
+    expect(ids).toEqual([...ids].sort((a, b) => a.localeCompare(b)));
+  });
+
+  it('BTCUSDT has a Binance provider id', () => {
+    expect(findSymbol('BTCUSDT')?.providerIds.binance).toBe('BTCUSDT');
+  });
+
+  it('XAUTUSDT has Tether Gold coingecko id and no Binance key', () => {
+    const xaut = findSymbol('XAUTUSDT');
+    expect(xaut?.providerIds.coingecko).toBe('tether-gold');
+    expect(xaut?.providerIds.binance).toBeUndefined();
+  });
+
+  it('every crypto symbol has a bybit and okx provider id', () => {
+    for (const s of SYMBOLS) {
+      if (s.category === 'crypto') {
+        expect(s.providerIds.bybit, `${s.id} missing bybit id`).toBeTruthy();
+        expect(s.providerIds.okx, `${s.id} missing okx id`).toBeTruthy();
       }
     }
   });

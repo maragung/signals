@@ -257,7 +257,7 @@ describe('fetchRecentForceOrders', () => {
 });
 
 describe('fetchHeatmapSnapshot', () => {
-  it('bundles snapshot + events + blocked flag', async () => {
+  it('bundles snapshot + events + blocked flag (Binance happy path)', async () => {
     const fetchMock = (url: string) => {
       if (url.includes('allForceOrders')) {
         return Promise.resolve({
@@ -288,7 +288,59 @@ describe('fetchHeatmapSnapshot', () => {
     expect(result.snapshot!.markPrice).toBe(50000);
   });
 
-  it('returns blocked=true when any upstream returns 451', async () => {
+  it('falls through to OKX when Binance returns 451', async () => {
+    const fetchMock = (url: string) => {
+      // All Binance endpoints (fapi) -> 451.
+      if (url.includes('/api/futures/') || url.includes('fapi.binance.com') || url.includes('dapi.binance.com')) {
+        return Promise.resolve({ ok: false, status: 451, json: () => Promise.resolve({ error: 'region' }) });
+      }
+      // OKX endpoints (last trade) return a valid ticker.
+      if (url.includes('/api/okx/market/ticker')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              code: '0',
+              data: [{ instId: 'BTC-USDT-SWAP', last: '50000', volCcy24h: '1000000' }],
+            }),
+        });
+      }
+      if (url.includes('/api/okx/market/open-interest')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              code: '0',
+              data: [{ instId: 'BTC-USDT-SWAP', oi: '1000', oiCcy: '1000' }],
+            }),
+        });
+      }
+      if (url.includes('/api/okx/public/funding-rate')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({ code: '0', data: [{ fundingRate: '0.0001', nextFundingTime: '1700000000000' }] }),
+        });
+      }
+      if (url.includes('/api/okx/rubik')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ code: '0', data: [{ longShortRatio: '1.2' }] }),
+        });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) });
+    };
+    const result = await fetchHeatmapSnapshot('BTCUSDT', 24, fetchMock as unknown as typeof fetch);
+    expect(result.blocked).toBe(false);
+    expect(result.snapshot).not.toBeNull();
+    expect(result.snapshot!.markPrice).toBe(50000);
+  });
+
+  it('returns blocked=true when ALL providers are blocked', async () => {
     const fetchMock = () =>
       Promise.resolve({ ok: false, status: 451, json: () => Promise.resolve({ error: 'region' }) });
     const result = await fetchHeatmapSnapshot('BTCUSDT', 24, fetchMock as unknown as typeof fetch);

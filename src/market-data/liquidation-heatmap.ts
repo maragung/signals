@@ -7,6 +7,11 @@
 //      (Binance USDⓈ-M Futures public liquidation stream).
 //    - REST: https://fapi.binance.com/fapi/v1/allForceOrders
 //      (historical liquidations, last 7 days).
+//    - REST via the multi-provider fallback chain: when Binance is
+//      geo-blocked (HTTP 451/403), the snapshot is sourced from OKX,
+//      Gate.io, Bitget, or Binance COIN-M instead. Only Binance
+//      exposes a public liquidation feed, so the other providers
+//      contribute the snapshot but no live events.
 //
 // 2. **Synthetic** (deterministic fallback derived from free public
 //    market data: open interest, mark price, funding rate, long/short
@@ -29,6 +34,7 @@ import type {
   LiquidationSide,
 } from '@/types';
 import { isFiniteNum } from '@/core/utils/series';
+import { fetchFuturesWithFallback } from './futures-providers';
 
 export interface HeatmapProviderOptions {
   symbol: string;
@@ -478,25 +484,29 @@ export function buildHeatmapFromEvents(
  * region-blocked signal. Callers should pass the result to
  * `buildHeatmapFromEvents` or `synthesizeHeatmap` depending on
  * whether events are present.
+ *
+ * Internally this delegates to the multi-provider fallback chain in
+ * `futures-providers/`. The chain tries Binance USDⓈ-M first; if
+ * that returns `blocked: true` (or no snapshot), it falls through
+ * to OKX, then Gate.io, then Bitget, then Binance COIN-M. The first
+ * non-blocked result with a valid snapshot wins.
  */
 export async function fetchHeatmapSnapshot(
   symbol: string,
   hours = 24,
   fetchImpl: typeof fetch = fetch,
 ): Promise<{ snapshot: FuturesSnapshot | null; events: LiquidationEvent[]; blocked: boolean; degraded: boolean }> {
-  const [snap, ev] = await Promise.all([
-    fetchFuturesSnapshot(symbol, fetchImpl),
-    fetchRecentForceOrders(symbol, hours, fetchImpl).catch(() => ({ events: [] as LiquidationEvent[], blocked: false })),
-  ]);
-  const blocked = snap.blocked || ev.blocked;
-  // If snapshot failed but events came through (or vice versa), mark
-  // as degraded so callers can show a small "partial data" hint.
-  const degraded = !blocked && (snap.snapshot === null || (ev.events.length === 0 && snap.snapshot !== null));
+  const result = await fetchFuturesWithFallback(symbol, { fetchImpl });
+  // `hours` is currently unused by the providers (the live Binance
+  // force-order fetch uses a 24h window by default), but we keep it
+  // in the signature for future use — e.g. when a non-Binance
+  // provider adds a public liquidation feed.
+  void hours;
   return {
-    snapshot: snap.snapshot,
-    events: ev.events,
-    blocked,
-    degraded,
+    snapshot: result.snapshot,
+    events: result.events,
+    blocked: result.blocked,
+    degraded: result.degraded,
   };
 }
 

@@ -85,9 +85,18 @@ export class ProviderManager {
    * registration order, then any provider that has the symbol.
    */
   pickProvider(symbol: SymbolInfo): MarketDataProvider | undefined {
+    return this.pickProviders(symbol)[0];
+  }
+
+  /**
+   * Like {@link pickProvider} but returns ALL matching providers sorted by
+   * preference (best first). Used by the auto-switch failover logic so the
+   * manager can try each provider in turn until one connects / returns data.
+   */
+  pickProviders(symbol: SymbolInfo): MarketDataProvider[] {
     const matches = this.providers.filter((p) => p.getSymbolInfo(symbol.id));
-    if (matches.length === 0) return undefined;
-    const sorted = matches.slice().sort((a, b) => {
+    if (matches.length === 0) return [];
+    return matches.slice().sort((a, b) => {
       const ai = this.preference.indexOf(a.name);
       const bi = this.preference.indexOf(b.name);
       const av = ai === -1 ? Number.MAX_SAFE_INTEGER : ai;
@@ -95,7 +104,6 @@ export class ProviderManager {
       if (av !== bv) return av - bv;
       return this.providers.indexOf(a) - this.providers.indexOf(b);
     });
-    return sorted[0];
   }
 
   /** Look up a symbol across all registered providers. */
@@ -113,14 +121,21 @@ export class ProviderManager {
     limit: number,
     endTime?: number,
   ): Promise<Candle[]> {
-    const provider = this.pickProvider(symbol);
-    if (!provider) return [];
-    try {
-      const result = await provider.getHistoricalCandles(symbol, timeframe, limit, endTime);
-      return result.filter((c) => sanitizeCandle(c) !== null) as Candle[];
-    } catch {
-      return [];
+    const providers = this.pickProviders(symbol);
+    if (providers.length === 0) return [];
+    // Try each matching provider in preference order. Return the first
+    // non-empty, sanitize-filtered result. A throw or empty result falls
+    // through to the next provider transparently (geo-block failover).
+    for (const provider of providers) {
+      try {
+        const result = await provider.getHistoricalCandles(symbol, timeframe, limit, endTime);
+        const sanitized = result.filter((c) => sanitizeCandle(c) !== null) as Candle[];
+        if (sanitized.length > 0) return sanitized;
+      } catch {
+        // try the next provider
+      }
     }
+    return [];
   }
 
   /**
@@ -133,8 +148,8 @@ export class ProviderManager {
     onCandle: CandleCallback,
     onStatus: StatusCallback,
   ): Unsubscribe {
-    const provider = this.pickProvider(symbol);
-    if (!provider) {
+    const providers = this.pickProviders(symbol);
+    if (providers.length === 0) {
       queueMicrotask(() => onStatus('error'));
       return () => undefined;
     }
@@ -158,7 +173,12 @@ export class ProviderManager {
       this.enqueueCandle(state, c, onCandle);
     };
 
-    return provider.subscribeCandles(symbol, timeframe, wrappedCandle, wrappedStatus);
+    return this.failoverSubscribe(
+      providers,
+      wrappedCandle,
+      wrappedStatus,
+      (provider, onStream, onStatusProxy) => provider.subscribeCandles(symbol, timeframe, onStream, onStatusProxy),
+    );
   }
 
   subscribeTicker(
@@ -166,12 +186,17 @@ export class ProviderManager {
     onTicker: TickerCallback,
     onStatus: StatusCallback,
   ): Unsubscribe {
-    const provider = this.pickProvider(symbol);
-    if (!provider) {
+    const providers = this.pickProviders(symbol);
+    if (providers.length === 0) {
       queueMicrotask(() => onStatus('error'));
       return () => undefined;
     }
-    return provider.subscribeTicker(symbol, onTicker, onStatus);
+    return this.failoverSubscribe(
+      providers,
+      onTicker,
+      onStatus,
+      (provider, onStream, onStatusProxy) => provider.subscribeTicker(symbol, onStream, onStatusProxy),
+    );
   }
 
   // ------------- internal helpers (exposed for tests) -------------
@@ -318,6 +343,89 @@ export class ProviderManager {
       state.throttleTimer = null;
     }
     this.flushPending(state, onCandle);
+  }
+
+  /**
+   * Drive a live subscription across multiple providers with AUTO-SWITCH
+   * failover. Starts with the first matching provider and transparently
+   * swaps to the next one if:
+   *   - the underlying provider emits `error`, or
+   *   - the underlying provider emits `closed` before it ever connected, or
+   *   - no `connected` status arrives within {@link FAILOVER_CONNECT_TIMEOUT_MS}.
+   *
+   * The consumer callbacks (`onStream`, `onStatus`) are never swapped — only
+   * the underlying provider subscription changes. Throttle/dedup (for candles)
+   * is applied upstream by the caller's wrapped callbacks, so it keeps working
+   * on whichever provider ultimately connects.
+   */
+  private failoverSubscribe<StreamCb extends (...args: any[]) => void>(
+    providers: MarketDataProvider[],
+    onStream: StreamCb,
+    onStatus: StatusCallback,
+    subscribe: (provider: MarketDataProvider, onStream: StreamCb, onStatusProxy: StatusCallback) => Unsubscribe,
+  ): Unsubscribe {
+    const FAILOVER_CONNECT_TIMEOUT_MS = 8000;
+    let connected = false;
+    let cancelled = false;
+    let currentUnsub: Unsubscribe | null = null;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let token = 0;
+
+    const clearTimer = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    };
+
+    const switchTo = (next: number) => {
+      if (cancelled) return;
+      token += 1; // invalidate the current provider's in-flight callbacks
+      clearTimer();
+      currentUnsub?.();
+      currentUnsub = null;
+      if (next < providers.length) {
+        tryProvider(next);
+      } else {
+        onStatus('error');
+      }
+    };
+
+    const tryProvider = (i: number) => {
+      if (cancelled) return;
+      connected = false;
+      const myToken = ++token;
+      const provider = providers[i]!;
+      const statusProxy: StatusCallback = (s) => {
+        if (myToken !== token) return; // stale provider (superseded by failover)
+        if (s === 'connected') {
+          connected = true;
+          clearTimer();
+        }
+        // Failover triggers: a hard error, or a close before any connection.
+        if (s === 'error' || (s === 'closed' && !connected)) {
+          switchTo(i + 1);
+          return;
+        }
+        onStatus(s);
+      };
+      currentUnsub = subscribe(provider, onStream, statusProxy);
+
+      clearTimer();
+      timeoutId = setTimeout(() => {
+        if (cancelled || myToken !== token) return;
+        if (!connected) switchTo(i + 1);
+      }, FAILOVER_CONNECT_TIMEOUT_MS);
+    };
+
+    tryProvider(0);
+
+    return () => {
+      cancelled = true;
+      clearTimer();
+      currentUnsub?.();
+      currentUnsub = null;
+    };
   }
 }
 
