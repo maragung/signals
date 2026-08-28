@@ -3,7 +3,7 @@
 import { TIMEFRAMES, type Timeframe } from '@/types';
 import { useSettings } from '@/stores/settings';
 import { formatPrice, formatPercent, pctChange } from '@/core/utils/series';
-import { findSymbol } from '@/config/symbols';
+import { SYMBOLS, findSymbol } from '@/config/symbols';
 import styles from './Header.module.css';
 
 export function Header({
@@ -35,10 +35,11 @@ export function Header({
           value={symbol}
           onChange={(e) => setSymbol(e.target.value)}
         >
-          <option value="BTCUSD">BTC/USD</option>
-          <option value="XAUUSD">XAU/USD</option>
-          <option value="ETHUSDT">ETH/USDT</option>
-          <option value="ETHBTC">ETH/BTC</option>
+          {SYMBOLS.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.display}
+            </option>
+          ))}
         </select>
         <div className={styles.priceBox}>
           <span className={styles.price}>{formatPrice(lastPrice, sym?.pricePrecision ?? 2)}</span>

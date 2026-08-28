@@ -7,6 +7,8 @@ import { useDrawings } from '@/stores/drawings';
 import { useState } from 'react';
 import { formatPercent, pctChange } from '@/core/utils/series';
 import { IndicatorPanel } from '@/components/indicators/IndicatorPanel';
+import type { IndicatorKind } from '@/types';
+import { nanoid } from 'nanoid';
 import { OverlayPanel } from '@/components/overlays/OverlayPanel';
 import { DrawingsPanel } from '@/components/drawings/DrawingsPanel';
 import type { DrawingKind } from '@/components/drawings/DrawingTools';
@@ -57,7 +59,78 @@ export function Sidebar({
           })}
         </div>
       </div>
-      <IndicatorPanel configs={indicatorConfigs} onChange={setIndicatorConfigs} />
+      <IndicatorPanel
+        configs={indicatorConfigs}
+        onChange={setIndicatorConfigs}
+        onAdd={(kind: IndicatorKind) => {
+          // Don't add duplicates by id; suffix with nanoid if collision
+          const id = `${kind}-${nanoid(4).toLowerCase()}`;
+          const params: Record<string, number> = {};
+          switch (kind) {
+            case 'sma':
+            case 'ema':
+            case 'wma':
+              params.period = 20;
+              break;
+            case 'rsi':
+              params.period = 14;
+              break;
+            case 'macd':
+              params.fast = 12;
+              params.slow = 26;
+              params.signal = 9;
+              break;
+            case 'bbands':
+            case 'bbwidth':
+              params.period = 20;
+              params.stddev = 2;
+              break;
+            case 'atr':
+            case 'adx':
+              params.period = 14;
+              break;
+            case 'keltner':
+              params.period = 20;
+              params.multiplier = 2;
+              break;
+            case 'stoch':
+              params.k = 14;
+              params.d = 3;
+              params.smooth = 3;
+              break;
+            case 'stochrsi':
+              params.rsiPeriod = 14;
+              params.stochPeriod = 14;
+              params.k = 3;
+              params.d = 3;
+              break;
+            case 'cci':
+            case 'cmf':
+              params.period = 20;
+              break;
+            case 'roc':
+              params.period = 12;
+              break;
+            case 'williamsr':
+            case 'mfi':
+              params.period = 14;
+              break;
+            case 'supertrend':
+              params.period = 10;
+              params.multiplier = 3;
+              break;
+            case 'volumesma':
+              params.period = 20;
+              break;
+            default:
+              break;
+          }
+          setIndicatorConfigs([
+            ...indicatorConfigs,
+            { id, kind, enabled: true, params, panel: 'overlay' },
+          ]);
+        }}
+      />
       <StrategiesPanel />
       <OverlayPanel />
       <DrawingsPanel

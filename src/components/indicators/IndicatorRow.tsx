@@ -2,6 +2,7 @@
 
 import React, { memo, useCallback } from 'react';
 import type { IndicatorConfig, IndicatorKind } from '@/types';
+import styles from './IndicatorPanel.module.css';
 
 export interface IndicatorRowProps {
   config: IndicatorConfig;
@@ -57,15 +58,9 @@ function IndicatorRowImpl(props: IndicatorRowProps) {
   return (
     <div
       data-testid={`indicator-row-${config.id}`}
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 4,
-        padding: 8,
-        borderBottom: '1px solid var(--border)',
-      }}
+      className={styles.rowWrap}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div className={styles.rowHeader}>
         <input
           type="checkbox"
           checked={config.enabled}
@@ -73,32 +68,51 @@ function IndicatorRowImpl(props: IndicatorRowProps) {
           aria-label={`Enable ${config.kind}`}
           data-testid={`indicator-toggle-${config.id}`}
         />
-        <span style={{ flex: 1, fontWeight: 500 }}>{config.id}</span>
+        <span
+          className={`${styles.rowLabel} ${config.enabled ? styles.rowEnabled : styles.rowDisabled}`}
+        >
+          {config.id}
+        </span>
         <input
           type="color"
           value={config.color ?? '#a78bfa'}
           onChange={handleColor}
           aria-label="Color"
-          style={{ width: 24, height: 24, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}
+          className={styles.colorInput}
         />
         {onRemove ? (
-          <button type="button" onClick={handleRemove} aria-label="Remove" title="Remove">×</button>
+          <button
+            type="button"
+            onClick={handleRemove}
+            aria-label="Remove"
+            title="Remove"
+            className={`${styles.iconButton} ${styles.iconDanger}`}
+          >
+            ×
+          </button>
         ) : null}
         {onReset ? (
-          <button type="button" onClick={handleReset} aria-label="Reset" title="Reset to defaults">↺</button>
+          <button
+            type="button"
+            onClick={handleReset}
+            aria-label="Reset"
+            title="Reset to defaults"
+            className={styles.iconButton}
+          >
+            ↺
+          </button>
         ) : null}
       </div>
       {paramKeys.length > 0 ? (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        <div className={styles.paramGrid}>
           {paramKeys.map((k) => (
-            <label key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11 }}>
-              <span style={{ color: 'var(--text-muted)' }}>{k}</span>
+            <label key={k} className={styles.paramField}>
+              <span>{k}</span>
               <input
                 type="number"
                 value={Number(config.params?.[k] ?? 0)}
                 onChange={handleParam(k)}
                 step="any"
-                style={{ width: 64 }}
                 aria-label={`${k} param`}
                 data-testid={`indicator-param-${config.id}-${k}`}
               />

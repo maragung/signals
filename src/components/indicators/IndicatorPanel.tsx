@@ -3,6 +3,7 @@
 import React, { memo, useCallback, useMemo } from 'react';
 import type { IndicatorConfig, IndicatorKind } from '@/types';
 import { IndicatorRow } from './IndicatorRow';
+import styles from './IndicatorPanel.module.css';
 
 export interface IndicatorPanelProps {
   configs: IndicatorConfig[];
@@ -34,6 +35,31 @@ const ADDABLE_KINDS: IndicatorKind[] = [
   'volume',
   'volumesma',
 ];
+
+const KIND_LABELS: Record<IndicatorKind, string> = {
+  sma: 'SMA',
+  ema: 'EMA',
+  wma: 'WMA',
+  vwap: 'VWAP',
+  macd: 'MACD',
+  adx: 'ADX',
+  supertrend: 'Supertrend',
+  rsi: 'RSI',
+  stochrsi: 'Stoch RSI',
+  stoch: 'Stochastic',
+  cci: 'CCI',
+  roc: 'ROC',
+  williamsr: 'Williams %R',
+  mfi: 'MFI',
+  atr: 'ATR',
+  bbands: 'Bollinger Bands',
+  bbwidth: 'BB Width',
+  keltner: 'Keltner',
+  volume: 'Volume',
+  volumesma: 'Volume SMA',
+  obv: 'OBV',
+  cmf: 'CMF',
+};
 
 function IndicatorPanelImpl(props: IndicatorPanelProps) {
   const { configs, onChange, onAdd } = props;
@@ -89,25 +115,18 @@ function IndicatorPanelImpl(props: IndicatorPanelProps) {
   const sorted = useMemo(() => {
     return [...configs].sort((a, b) => {
       if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
-      return a.id.localeCompare(b.id);
+      return KIND_LABELS[a.kind].localeCompare(KIND_LABELS[b.kind]);
     });
   }, [configs]);
 
   return (
-    <div data-testid="indicator-panel" role="region" aria-label="Indicators">
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: 8,
-          borderBottom: '1px solid var(--border)',
-        }}
-      >
-        <strong>Indicators</strong>
+    <div data-testid="indicator-panel" role="region" aria-label="Indicators" className={styles.panel}>
+      <div className={styles.header}>
+        <h3 className={styles.title}>Indicators</h3>
         {onAdd ? (
           <select
             aria-label="Add indicator"
+            className={styles.toggle}
             onChange={(e) => {
               if (e.target.value) {
                 onAdd(e.target.value as IndicatorKind);
@@ -120,28 +139,28 @@ function IndicatorPanelImpl(props: IndicatorPanelProps) {
             <option value="">+ Add…</option>
             {ADDABLE_KINDS.map((k) => (
               <option key={k} value={k}>
-                {k}
+                {KIND_LABELS[k]}
               </option>
             ))}
           </select>
         ) : null}
       </div>
       {sorted.length === 0 ? (
-        <div style={{ padding: 12, color: 'var(--text-muted)', fontSize: 12 }}>
-          No indicators configured.
-        </div>
+        <div className={styles.empty}>No indicators configured.</div>
       ) : (
-        sorted.map((c) => (
-          <IndicatorRow
-            key={c.id}
-            config={c}
-            onToggle={handleToggle}
-            onColorChange={handleColorChange}
-            onParamChange={handleParamChange}
-            onRemove={handleRemove}
-            onReset={handleReset}
-          />
-        ))
+        <div className={styles.list}>
+          {sorted.map((c) => (
+            <IndicatorRow
+              key={c.id}
+              config={c}
+              onToggle={handleToggle}
+              onColorChange={handleColorChange}
+              onParamChange={handleParamChange}
+              onRemove={handleRemove}
+              onReset={handleReset}
+            />
+          ))}
+        </div>
       )}
     </div>
   );
