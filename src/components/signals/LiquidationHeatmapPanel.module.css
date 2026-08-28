@@ -1,0 +1,196 @@
+.panel {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  margin: 0 0 8px 0;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.sourceTag {
+  font-size: 9px;
+  letter-spacing: 0;
+  text-transform: none;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+.sourceTag[data-source='live'] {
+  background: var(--bull-bg);
+  color: var(--bull);
+  border-color: var(--bull);
+}
+
+.meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 8px;
+  font-size: var(--font-xs);
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius);
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.bull {
+  color: var(--bull);
+}
+.bear {
+  color: var(--bear);
+}
+
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.legendLong {
+  width: 12px;
+  height: 6px;
+  background: var(--bull);
+  border-radius: 1px;
+  display: inline-block;
+}
+.legendShort {
+  width: 12px;
+  height: 6px;
+  background: var(--bear);
+  border-radius: 1px;
+  display: inline-block;
+}
+
+.ladder {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-variant-numeric: tabular-nums;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-tertiary);
+}
+
+.lvl {
+  display: grid;
+  grid-template-columns: 70px 1fr;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  font-size: 10px;
+  height: 12px;
+}
+
+.lvlPrice {
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+.lvlBars {
+  position: relative;
+  height: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  justify-content: center;
+}
+
+.lvlBarLong {
+  height: 4px;
+  background: var(--bull);
+  border-radius: 1px;
+  transition: width 0.3s ease;
+}
+.lvlBarShort {
+  height: 4px;
+  background: var(--bear);
+  border-radius: 1px;
+  margin-left: auto;
+  transition: width 0.3s ease;
+}
+
+.recent {
+  margin-top: 8px;
+}
+
+.subTitle {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin: 0 0 4px 0;
+  font-weight: 700;
+}
+
+.recentList {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.recentRow {
+  display: grid;
+  grid-template-columns: 16px 1fr auto auto;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  padding: 3px 4px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+}
+
+.recentSide {
+  font-weight: 700;
+  text-align: center;
+  font-size: 9px;
+  width: 14px;
+  height: 14px;
+  line-height: 14px;
+  border-radius: 2px;
+}
+.recentRow[data-side='long'] .recentSide {
+  background: var(--bear-bg);
+  color: var(--bear);
+}
+.recentRow[data-side='short'] .recentSide {
+  background: var(--bull-bg);
+  color: var(--bull);
+}
+
+.recentPrice {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.recentNotional {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+.recentTime {
+  color: var(--text-muted);
+  font-size: 9px;
+}
+
+.empty {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 4px 0;
+}

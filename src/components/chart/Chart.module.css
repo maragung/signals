@@ -1,0 +1,76 @@
+.container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+  background: var(--bg-primary);
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.controls {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  gap: 4px;
+  z-index: 5;
+}
+
+.priceTag {
+  position: absolute;
+  top: 12px;
+  right: 60px;
+  padding: 4px 8px;
+  background: var(--bull);
+  color: #000;
+  font-weight: 700;
+  font-size: var(--font-sm);
+  border-radius: 4px;
+  z-index: 5;
+  font-variant-numeric: tabular-nums;
+}
+.priceTag[data-side='bear'] {
+  background: var(--bear);
+}
+
+.ohlc {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  padding: 4px 10px;
+  background: rgba(0, 0, 0, 0.6);
+  color: var(--text-primary);
+  font-size: var(--font-xs);
+  font-variant-numeric: tabular-nums;
+  border-radius: 4px;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.ohlc strong {
+  font-weight: 600;
+}
+
+.time {
+  color: var(--text-muted);
+  margin-left: 6px;
+}
+
+.error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary);
+  color: var(--bear);
+  font-size: var(--font-sm);
+  z-index: 10;
+}

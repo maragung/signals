@@ -1,0 +1,12 @@
+node_modules
+.next
+dist
+out
+.env*
+*.log
+.DS_Store
+coverage
+.vscode
+.idea
+tsconfig.tsbuildinfo
+*.tsbuildinfo

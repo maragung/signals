@@ -1,0 +1,115 @@
+.header {
+  height: var(--header-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+  gap: 12px;
+  min-height: var(--header-height);
+}
+
+.left,
+.right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 200px;
+}
+
+.right {
+  justify-content: flex-end;
+  min-width: 80px;
+}
+
+.center {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  justify-content: center;
+  overflow-x: auto;
+}
+
+.symbolSelect {
+  font-weight: 600;
+  font-size: var(--font-md);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px 8px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.priceBox {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+  min-width: 110px;
+}
+
+.price {
+  font-size: var(--font-lg);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.changeUp {
+  color: var(--bull);
+  font-size: var(--font-sm);
+  font-weight: 600;
+}
+.changeDown {
+  color: var(--bear);
+  font-size: var(--font-sm);
+  font-weight: 600;
+}
+
+.statusBox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.statusText {
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.tfBtn {
+  font-size: var(--font-xs);
+  padding: 4px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+.tfBtn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.tfActive {
+  color: #000 !important;
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+
+@media (max-width: 768px) {
+  .center {
+    display: none;
+  }
+  .left {
+    min-width: auto;
+  }
+}

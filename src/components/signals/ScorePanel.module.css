@@ -1,0 +1,80 @@
+.panel {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  margin: 0 0 6px 0;
+  font-weight: 700;
+}
+
+.bigLabel {
+  font-size: var(--font-xl);
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.bull {
+  color: var(--bull);
+}
+.bear {
+  color: var(--bear);
+}
+.neutral {
+  color: var(--neutral);
+}
+
+.barRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-xs);
+  margin: 4px 0;
+}
+.bar {
+  flex: 1;
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--bg-tertiary);
+}
+.barBull {
+  background: var(--bull);
+  height: 100%;
+}
+.barBear {
+  background: var(--bear);
+  height: 100%;
+}
+
+.netRow {
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.breakdown {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 8px;
+  font-size: var(--font-xs);
+}
+.bdRow {
+  display: flex;
+  justify-content: space-between;
+}
+.bdLabel {
+  color: var(--text-muted);
+  text-transform: capitalize;
+}
+
+.empty {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  font-style: italic;
+}

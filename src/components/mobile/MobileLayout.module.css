@@ -1,0 +1,174 @@
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+
+.body {
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+  position: relative;
+}
+
+.scroll {
+  height: 100%;
+  overflow-y: auto;
+  padding-bottom: 8px;
+}
+
+.chartPage {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.tfRow {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 6px 8px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.tfBtn {
+  font-size: 10px;
+  padding: 4px 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: var(--radius);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.tfActive {
+  color: #000 !important;
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+
+.pairPicker {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  overflow-x: auto;
+}
+.pairBtn {
+  font-size: 10px;
+  padding: 6px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-radius: var(--radius);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pairActive {
+  color: #000 !important;
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+
+.card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  margin: 8px;
+  padding: 12px;
+}
+.cardTitle {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  font-weight: 700;
+}
+
+.bigPrice {
+  font-size: 32px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 4px;
+}
+
+.bull {
+  color: var(--bull);
+}
+.bear {
+  color: var(--bear);
+}
+
+.statGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: var(--font-sm);
+}
+.statLabel {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.choice {
+  font-size: 10px;
+  padding: 6px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-radius: var(--radius);
+  font-weight: 700;
+}
+.choiceActive {
+  color: #000 !important;
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+
+.tabbar {
+  display: flex;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.tabBtn {
+  flex: 1;
+  padding: 8px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  border-top: 2px solid transparent;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.tabActive {
+  color: var(--accent) !important;
+  border-top-color: var(--accent) !important;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+}

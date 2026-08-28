@@ -1,0 +1,64 @@
+.sidebar {
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.section {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  margin: 0 0 6px 0;
+  font-weight: 700;
+}
+
+.watchlist {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.symbolRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  text-align: left;
+  font-size: var(--font-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.symbolRow:hover {
+  background: var(--bg-hover);
+}
+.active {
+  background: var(--bg-tertiary) !important;
+  border-color: var(--accent) !important;
+}
+
+.symbolName {
+  font-weight: 600;
+}
+
+.up {
+  color: var(--bull);
+  font-size: var(--font-xs);
+  font-weight: 600;
+}
+.down {
+  color: var(--bear);
+  font-size: var(--font-xs);
+  font-weight: 600;
+}

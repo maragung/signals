@@ -1,0 +1,87 @@
+.panel {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  margin: 0;
+  font-weight: 700;
+}
+
+.toggle {
+  font-size: 10px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  padding: 2px 4px;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.row {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-sm);
+  cursor: pointer;
+  user-select: none;
+}
+
+.period {
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+}
+
+.iconBtn {
+  float: right;
+  font-size: var(--font-xs);
+  padding: 2px 6px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 6px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius);
+}
+
+.paramRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-xs);
+}
+
+.paramRow input {
+  width: 60px;
+  font-size: var(--font-xs);
+}
