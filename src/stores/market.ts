@@ -6,6 +6,11 @@ interface CandleSeries {
   lastUpdate: number;
 }
 
+// Stable reference for "no candles yet" so selectors return a cached value
+// (returning a fresh [] literal each call breaks useSyncExternalStore under
+// React 19 / zustand v5 and causes an infinite render loop).
+const EMPTY_CANDLES: Candle[] = [];
+
 interface MarketState {
   // symbol -> timeframe -> candles
   candles: Record<string, Record<Timeframe, Candle[]>>;
@@ -81,5 +86,5 @@ export function getCandles(
   symbol: string,
   tf: Timeframe,
 ): Candle[] {
-  return state.candles[symbol]?.[tf] || [];
+  return state.candles[symbol]?.[tf] || EMPTY_CANDLES;
 }

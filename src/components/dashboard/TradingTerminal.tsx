@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useSettings } from '@/stores/settings';
 import { useMarket, getCandles } from '@/stores/market';
 import { useDrawings } from '@/stores/drawings';
@@ -40,7 +41,7 @@ export function TradingTerminal() {
   const status = useMarket((s) => s.status);
   const addError = useMarket((s) => s.addError);
 
-  const drawings = useDrawings((s) => s.getDrawings(symbol, tf));
+  const drawings = useDrawings(useShallow((s) => s.getDrawings(symbol, tf)));
   const alerts = useAlerts((s) => s.alerts);
   const markAlertTriggered = useAlerts((s) => s.markTriggered);
 
