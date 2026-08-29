@@ -38,6 +38,14 @@ export const useDrawings = create<DrawingsState>()(
     {
       name: 'pp-drawings-v1',
       storage: createJSONStorage(() => localStorage),
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<DrawingsState>;
+        return {
+          ...current,
+          ...p,
+          drawings: Array.isArray(p.drawings) ? p.drawings : current.drawings,
+        } as DrawingsState;
+      },
     },
   ),
 );

@@ -38,6 +38,14 @@ export const useAlerts = create<AlertsState>()(
     {
       name: 'pp-alerts-v1',
       storage: createJSONStorage(() => localStorage),
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<AlertsState>;
+        return {
+          ...current,
+          ...p,
+          alerts: Array.isArray(p.alerts) ? p.alerts : current.alerts,
+        } as AlertsState;
+      },
     },
   ),
 );
