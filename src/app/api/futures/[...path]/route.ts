@@ -90,6 +90,21 @@ export async function GET(req: NextRequest) {
     clearTimeout(timer);
     if (!upstream.ok) {
       const text = await upstream.text().catch(() => '');
+      // Binance answers geo-blocked / anti-bot requests with an HTML error
+      // page (not JSON). Surface these as empty data so the client falls back
+      // gracefully instead of logging a 404 in the console.
+      const looksLikeHtml =
+        upstream.headers.get('content-type')?.includes('text/html') || text.trimStart().startsWith('<');
+      if (looksLikeHtml) {
+        return new NextResponse('[]', {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+            'cache-control': 'no-store',
+            'access-control-allow-origin': '*',
+          },
+        });
+      }
       return NextResponse.json(
         { error: 'upstream_error', status: upstream.status, body: text.slice(0, 500) },
         { status: upstream.status },
